@@ -17,8 +17,6 @@ import os
 import sys
 import time
 
-import eventlet
-import greenlet
 from neutron_lib import constants as n_const
 from oslo_log import log as logging
 from oslo_utils import excutils

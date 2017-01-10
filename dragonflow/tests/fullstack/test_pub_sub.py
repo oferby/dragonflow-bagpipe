@@ -128,7 +128,7 @@ class TestPubSub(PubSubTestBase):
         self.assertNotEqual(local_event_num, events_num)
         if cfg.CONF.df.enable_selective_topology_distribution:
             subscriber.unregister_topic(topic)
-        subscriber.stop()
+        subscriber.close()
         self.assertFalse(network.exists())
 
     def test_pub_sub_update_port(self):
@@ -179,7 +179,7 @@ class TestPubSub(PubSubTestBase):
         self.assertNotEqual(local_event_num, events_num)
         if cfg.CONF.df.enable_selective_topology_distribution:
             subscriber.unregister_topic(topic)
-        subscriber.stop()
+        subscriber.close()
         self.assertFalse(network.exists())
 
     def test_pub_sub_event_number_different_port(self):
@@ -215,8 +215,12 @@ class TestPubSub(PubSubTestBase):
         time.sleep(const.DEFAULT_CMD_TIMEOUT)
 
         self.assertEqual(local_events_num + 100, ns.events_num)
+<<<<<<< HEAD
         subscriber.stop()
         self.stop_publisher(publisher)
+=======
+        subscriber.close()
+>>>>>>> 1626ec3... Remove DFDaemon utlity class
 
     def test_pub_sub_add_topic(self):
         if not self.do_test:
@@ -261,8 +265,12 @@ class TestPubSub(PubSubTestBase):
         subscriber.unregister_topic(topic)
         publisher.send_event(update, topic)
         self.assertIsNone(self.events_action_t)
+<<<<<<< HEAD
         subscriber.stop()
         self.stop_publisher(publisher)
+=======
+        subscriber.close()
+>>>>>>> 1626ec3... Remove DFDaemon utlity class
 
     def test_pub_sub_register_addr(self):
         if not self.do_test:
@@ -305,9 +313,13 @@ class TestPubSub(PubSubTestBase):
         publisher2.send_event(update)
         time.sleep(const.DEFAULT_CMD_TIMEOUT)
         self.assertEqual(ns.events_action, action)
+<<<<<<< HEAD
         subscriber.stop()
         self.stop_publisher(publisher)
         self.stop_publisher(publisher2)
+=======
+        subscriber.close()
+>>>>>>> 1626ec3... Remove DFDaemon utlity class
 
 
 class TestMultiprocPubSub(PubSubTestBase):
@@ -328,8 +340,12 @@ class TestMultiprocPubSub(PubSubTestBase):
 
     def tearDown(self):
         if self.subscriber:
+<<<<<<< HEAD
             self.subscriber.stop()
         self.stop_publisher(self.publisher)
+=======
+            self.subscriber.close()
+>>>>>>> 1626ec3... Remove DFDaemon utlity class
         super(TestMultiprocPubSub, self).tearDown()
 
     def _verify_event(self, table, key, action, value, topic):
@@ -357,6 +373,11 @@ class TestMultiprocPubSub(PubSubTestBase):
         self.subscriber.daemonize()
         publisher.send_event(self.event)
         test_utils.wait_until_true(lambda: self.event_received)
+<<<<<<< HEAD
+=======
+        self.subscriber.close()
+        self.subscriber = None
+>>>>>>> 1626ec3... Remove DFDaemon utlity class
 
 
 class TestDbTableMonitors(PubSubTestBase):
@@ -377,8 +398,12 @@ class TestDbTableMonitors(PubSubTestBase):
     def tearDown(self):
         if self.do_test:
             self.monitor.stop()
+<<<<<<< HEAD
             self.subscriber.stop()
         self.stop_publisher(self.publisher)
+=======
+            self.subscriber.close()
+>>>>>>> 1626ec3... Remove DFDaemon utlity class
         super(TestDbTableMonitors, self).tearDown()
 
     def _db_change_callback(self, table, key, action, value, topic):

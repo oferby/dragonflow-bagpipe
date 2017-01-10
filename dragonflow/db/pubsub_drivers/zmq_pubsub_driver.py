@@ -12,7 +12,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import eventlet
+import time
+
 from eventlet.green import zmq
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -153,7 +154,7 @@ class ZMQSubscriberAgentBase(pub_sub_api.SubscriberAgentBase):
                  {'endpoints': self.uri_list})
         while True:
             try:
-                eventlet.sleep(0)
+                time.sleep(0)
                 [topic, data] = self.sub_socket.recv_multipart()
                 self._handle_incoming_event(data)
             except Exception as e:
@@ -162,6 +163,9 @@ class ZMQSubscriberAgentBase(pub_sub_api.SubscriberAgentBase):
                 self.connect()
                 self.db_changes_callback(None, None, 'sync',
                                          None, None)
+
+    def close(self):
+        self.sub_socket.close()
 
 
 class ZMQSubscriberMultiprocAgent(ZMQSubscriberAgentBase):
