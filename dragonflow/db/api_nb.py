@@ -68,18 +68,23 @@ class NbApi(object):
 
     @staticmethod
     def get_instance(is_neutron_server):
+        LOG.debug("api_nb::get_instance: Enter")
         global _nb_api
         if _nb_api is None:
+            LOG.debug("api_nb::get_instance: Initialising new driver: %s", cfg.CONF.df.nb_db_class)
             nb_driver = df_utils.load_driver(
                 cfg.CONF.df.nb_db_class,
                 df_utils.DF_NB_DB_DRIVER_NAMESPACE)
+            LOG.debug("api_nb::get_instance: Initialising new NbAPI instance: %s", cfg.CONF.df.enable_df_pub_sub)
             nb_api = NbApi(
                 nb_driver,
                 use_pubsub=cfg.CONF.df.enable_df_pub_sub,
                 is_neutron_server=is_neutron_server)
+            LOG.debug("api_nb::get_instance: About to connect to DB")
             nb_api.initialize(db_ip=cfg.CONF.df.remote_db_ip,
                               db_port=cfg.CONF.df.remote_db_port)
             _nb_api = nb_api
+        LOG.debug("api_nb::get_instance: Done!")
         return _nb_api
 
     def initialize(self, db_ip='127.0.0.1', db_port=4001):
