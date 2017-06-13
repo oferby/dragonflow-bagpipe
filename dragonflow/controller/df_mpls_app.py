@@ -85,11 +85,15 @@ class MplsApp(df_base_app.DFlowApp):
         lport_id = self.vswitch_api.get_port_port_id(tap_device_name)
         LOG.info("port_id for %s: %s", tap_device_name, lport_id)
         lport = self.nb_api.get(l2.LogicalPort(id=lport_id))
+        LOG.info("logical port for %s: %r", tap_device_name, lport)
         lswitch = lport.lswitch.get_object()
         if not lswitch:
             lswitch = self.nb_api.get(lport.lswitch)
-        LOG.info("logical port for %s: %r", tap_device_name, lport)
         network_id = lswitch.unique_key
+        self.set_ingress_mpls_flow(network_id, lport)
+        self.set_egress_mpls_flow(network_id, '11.10.0.0/24')
+
+    def set_ingress_mpls_flow(self, network_id, lport):
         match = self.get_mpls_match()
         actions = [self.parser.OFPActionPopMpls(ethertype=0x0800),
                    self.parser.OFPActionSetField(eth_dst=lport.mac),
@@ -104,4 +108,18 @@ class MplsApp(df_base_app.DFlowApp):
             table_id=const.INGRESS_MPLS_TABLE,
             inst=inst,
             match=match,
+        )
+
+    def set_egress_mpls_flow(self, network_id, nw_dst):
+        match = self.parser.OFPMatch(metadata=network_id, eth_type=ethernet.ether.ETH_TYPE_IP, ipv4_dst=nw_dst)
+        actions = [self.parser.OFPActionPushMpls(),
+                   self.parser.OFPActionSetField(mpls_label=16),
+                   self.parser.OFPActionSetField(eth_src=self.mac_address),
+                   self.parser.OFPActionSetField(eth_dst='2c:6b:f5:61:dd:94'),
+                   self.parser.OFPActionOutput(self.mpls_port_id, self.datapath.ofproto.OFPCML_NO_BUFFER)]
+        inst = [self.parser.OFPInstructionActions(self.datapath.ofproto.OFPIT_APPLY_ACTIONS, actions)]
+        self.mod_flow(
+            inst=inst,
+            match=match,
+            table_id=const.L3_LOOKUP_TABLE
         )
