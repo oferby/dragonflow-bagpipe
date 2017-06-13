@@ -179,6 +179,11 @@ class OvsApi(object):
         return self._db_get_val('Interface', port, 'ofport',
                                 check_error=False, log_errors=False)
 
+    def get_port_port_id(self, port):
+        external_ids = self._db_get_val('Interface', port, 'external_ids',
+                                        check_error=False, log_errors=False)
+        return external_ids['iface-id']
+
     def get_port_qos(self, port_id):
         port_qoses = self.ovsdb.db_find(
             'QoS', ('external_ids', '=', {'iface-id': port_id}),

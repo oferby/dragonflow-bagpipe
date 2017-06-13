@@ -52,6 +52,7 @@ INGRESS_SNAT_TABLE = 51
 L2_LOOKUP_TABLE = 55
 # Filter packet based on destination IP address.
 L3_LOOKUP_TABLE = 60
+EGRESS_MPLS_TABLE = 61
 # Filter packet based on destination IP address in proactive way ;)
 L3_PROACTIVE_LOOKUP_TABLE = 65
 # Related to dnap app/snat_app
@@ -66,6 +67,7 @@ EGRESS_EXTERNAL_TABLE = 80
 # and then go to INGRESS_CONNTRACK_TABLE. Broadcast packets are
 # duplicated here.
 INGRESS_DESTINATION_PORT_LOOKUP_TABLE = 100
+INGRESS_MPLS_TABLE = 103
 # The next 2 tables are related to connection tracking and packet filtering.
 # Used for SG.
 INGRESS_CONNTRACK_TABLE = 105

@@ -20,7 +20,7 @@ import time
 from oslo_config import cfg
 from oslo_log import log
 
-from dragonflow._i18n import _LE, _LW
+# from dragonflow._i18n import _LE, _LW
 from dragonflow.controller import df_db_objects_refresh as obj_refresh
 from dragonflow.db import models
 
@@ -88,12 +88,11 @@ class DBConsistencyManager(object):
         if self.db_sync_time < MIN_SYNC_INTERVAL_TIME:
             self.db_sync_time = MIN_SYNC_INTERVAL_TIME
         self._handlers = []
+        self._daemon = threading.Thread(target=self.run)
+        self._event = threading.Event()
 
     def add_handler(self, handler):
         self._handlers.append(handler)
-        self._daemon = threading.Thread(target=self.run)
-        self._event = threading.Event()
-        self.cache_manager = CacheManager()
 
     def process(self, direct):
         self.topology.check_topology_info()
