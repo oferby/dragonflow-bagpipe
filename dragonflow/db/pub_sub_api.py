@@ -266,6 +266,8 @@ class SubscriberAgentBase(SubscriberApi):
 
     def _handle_incoming_event(self, data):
         message = unpack_message(data)
+        if message['table'] == 'rlroutes':
+            LOG.info("Got message: %s", message)
         self.db_changes_callback(
             message['table'],
             message['key'],

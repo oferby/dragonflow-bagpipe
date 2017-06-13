@@ -14,6 +14,8 @@ from dragonflow.controller.common import constants as const
 from dragonflow.controller.common import arp_responder
 from dragonflow.controller import df_base_app
 from dragonflow.db.models import l2
+from dragonflow.db.models import constants as model_constants
+from dragonflow.db.models import remote_routes
 from dragonflow.controller.common import utils
 
 LOG = log.getLogger(__name__)
@@ -81,7 +83,29 @@ class MplsApp(df_base_app.DFlowApp):
     def get_mpls_match(self):
         return self.parser.OFPMatch(in_port=self.mpls_port_id, eth_type=ethernet.ether.ETH_TYPE_MPLS)
 
-    def magic_function(self, tap_device_name):
+    def get_mpls_label_match(self, label):
+        return self.parser.OFPMatch(eth_type=ethernet.ether.ETH_TYPE_MPLS, mpls_label=label)
+
+    @df_base_app.register_event(remote_routes.LocalLabeledRoute, model_constants.EVENT_CREATED)
+    def local_route_setup_create(self, llroute):
+        LOG.debug('got local route create event for %s', llroute)
+        self._setup_local_route(llroute)
+
+    @df_base_app.register_event(remote_routes.LocalLabeledRoute, model_constants.EVENT_DELETED)
+    def local_route_setup_remove(self, llroute):
+        LOG.debug('got local route remove event for %s', llroute)
+        self._delete_local_rotue(llroute.label)
+
+    @df_base_app.register_event(remote_routes.RemoteLabeledRoute, model_constants.EVENT_CREATED)
+    def remote_route_setup_create(self, rlroute):
+        LOG.debug('got remote route create event for %s', rlroute)
+
+    @df_base_app.register_event(remote_routes.RemoteLabeledRoute, model_constants.EVENT_DELETED)
+    def remote_route_setup_remove(self, rlroute):
+        LOG.debug('got remote route remove event for %s', rlroute)
+
+    def _setup_local_route(self, llroute):
+        tap_device_name = llroute.port
         lport_id = self.vswitch_api.get_port_port_id(tap_device_name)
         LOG.info("port_id for %s: %s", tap_device_name, lport_id)
         lport = self.nb_api.get(l2.LogicalPort(id=lport_id))
@@ -90,12 +114,8 @@ class MplsApp(df_base_app.DFlowApp):
         if not lswitch:
             lswitch = self.nb_api.get(lport.lswitch)
         network_id = lswitch.unique_key
-        self.set_ingress_mpls_flow(network_id, lport)
-        self.set_egress_mpls_flow(network_id, '11.10.0.0/24')
-
-    def set_ingress_mpls_flow(self, network_id, lport):
-        match = self.get_mpls_match()
-        actions = [self.parser.OFPActionPopMpls(ethertype=0x0800),
+        match = self.get_mpls_label_match(llroute.label)
+        actions = [self.parser.OFPActionPopMpls(ethertype=ethernet.ether.ETH_TYPE_IP),
                    self.parser.OFPActionSetField(eth_dst=lport.mac),
                    self.parser.OFPActionSetField(reg7=lport.unique_key),
                    self.parser.OFPActionSetField(metadata=network_id)]
@@ -106,9 +126,29 @@ class MplsApp(df_base_app.DFlowApp):
         inst = [action_inst, goto_inst]
         self.mod_flow(
             table_id=const.INGRESS_MPLS_TABLE,
+            priority=const.PRIORITY_HIGH,
             inst=inst,
             match=match,
         )
+
+    def _delete_local_rotue(self, label):
+        match = self.get_mpls_label_match(label)
+        self.mod_flow(
+            table_id=const.INGRESS_MPLS_TABLE,
+            command=self.datapath.ofproto.OFPFC_DELETE,
+            priority=const.PRIORITY_HIGH,
+            match=match)
+
+    def magic_function(self, tap_device_name):
+        lport_id = self.vswitch_api.get_port_port_id(tap_device_name)
+        LOG.info("port_id for %s: %s", tap_device_name, lport_id)
+        lport = self.nb_api.get(l2.LogicalPort(id=lport_id))
+        LOG.info("logical port for %s: %r", tap_device_name, lport)
+        lswitch = lport.lswitch.get_object()
+        if not lswitch:
+            lswitch = self.nb_api.get(lport.lswitch)
+        network_id = lswitch.unique_key
+        self.set_egress_mpls_flow(network_id, '11.10.0.0/24')
 
     def set_egress_mpls_flow(self, network_id, nw_dst):
         match = self.parser.OFPMatch(metadata=network_id, eth_type=ethernet.ether.ETH_TYPE_IP, ipv4_dst=nw_dst)

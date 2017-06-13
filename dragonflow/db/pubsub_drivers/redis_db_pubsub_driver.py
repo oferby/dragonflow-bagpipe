@@ -90,13 +90,15 @@ class RedisPublisherAgent(pub_sub_api.PublisherAgentBase):
             self._update_client()
 
     def _send_event(self, data, topic):
+        LOG.info("About to finally send event: %s %s", topic, data)
         ttl = self.publish_retry_times
         alreadysync = False
         while ttl > 0:
             ttl -= 1
             try:
                 if self.client is not None:
-                    self.client.publish(topic, data)
+                    result = self.client.publish(topic, data)
+                    LOG.info("Sent event: %s", result)
                     break
             except Exception:
                 if not alreadysync:

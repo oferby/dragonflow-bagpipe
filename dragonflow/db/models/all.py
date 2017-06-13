@@ -17,4 +17,4 @@ from dragonflow.db.models import legacy  # noqa
 from dragonflow.db.models import qos  # noqa
 from dragonflow.db.models import secgroups  # noqa
 from dragonflow.db.models import service  # noqa
-from dragonflow.db.models import remote_routes
+from dragonflow.db.models import remote_routes  # noqa
