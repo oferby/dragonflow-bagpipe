@@ -33,7 +33,6 @@ class MplsApp(df_base_app.DFlowApp):
     def switch_features_handler(self, ev):
         self.add_arp_flow()
         self.set_mpls_ingress_table_flow()
-        self.magic_function('tap65111509-0b')
 
     def add_arp_flow(self):
         #     need to get iface number from ovs
@@ -98,21 +97,20 @@ class MplsApp(df_base_app.DFlowApp):
 
     @df_base_app.register_event(remote_routes.RemoteLabeledRoute, model_constants.EVENT_CREATED)
     def remote_route_setup_create(self, rlroute):
-        LOG.debug('got remote route create event for %s', rlroute)
+        LOG.debug('got remote route create event - %s %s %s %s', rlroute.destination, rlroute.helper_port,
+                  rlroute.nexthop, rlroute.label)
+        lport, lswitch = self._get_lport_and_lswitch(rlroute.helper_port)
+        self.add_egress_mpls_flow(lswitch.unique_key, rlroute.destination.__str__())
 
     @df_base_app.register_event(remote_routes.RemoteLabeledRoute, model_constants.EVENT_DELETED)
     def remote_route_setup_remove(self, rlroute):
-        LOG.debug('got remote route remove event for %s', rlroute)
+        LOG.debug('got remote route remove event - %s %s %s %s', rlroute.destination, rlroute.helper_port,
+                  rlroute.nexthop, rlroute.label)
+        lport, lswitch = self._get_lport_and_lswitch(rlroute.helper_port)
+        self.remove_egress_mpls_flow(lswitch.unique_key, rlroute.destination.__str__())
 
     def _setup_local_route(self, llroute):
-        tap_device_name = llroute.port
-        lport_id = self.vswitch_api.get_port_port_id(tap_device_name)
-        LOG.info("port_id for %s: %s", tap_device_name, lport_id)
-        lport = self.nb_api.get(l2.LogicalPort(id=lport_id))
-        LOG.info("logical port for %s: %r", tap_device_name, lport)
-        lswitch = lport.lswitch.get_object()
-        if not lswitch:
-            lswitch = self.nb_api.get(lport.lswitch)
+        lport, lswitch = self._get_lport_and_lswitch(llroute.port)
         network_id = lswitch.unique_key
         match = self.get_mpls_label_match(llroute.label)
         actions = [self.parser.OFPActionPopMpls(ethertype=ethernet.ether.ETH_TYPE_IP),
@@ -139,18 +137,15 @@ class MplsApp(df_base_app.DFlowApp):
             priority=const.PRIORITY_HIGH,
             match=match)
 
-    def magic_function(self, tap_device_name):
+    def _get_lport_and_lswitch(self, tap_device_name):
         lport_id = self.vswitch_api.get_port_port_id(tap_device_name)
-        LOG.info("port_id for %s: %s", tap_device_name, lport_id)
         lport = self.nb_api.get(l2.LogicalPort(id=lport_id))
-        LOG.info("logical port for %s: %r", tap_device_name, lport)
         lswitch = lport.lswitch.get_object()
         if not lswitch:
             lswitch = self.nb_api.get(lport.lswitch)
-        network_id = lswitch.unique_key
-        self.set_egress_mpls_flow(network_id, '11.10.0.0/24')
+        return lport, lswitch
 
-    def set_egress_mpls_flow(self, network_id, nw_dst):
+    def add_egress_mpls_flow(self, network_id, nw_dst):
         match = self.parser.OFPMatch(metadata=network_id, eth_type=ethernet.ether.ETH_TYPE_IP, ipv4_dst=nw_dst)
         actions = [self.parser.OFPActionPushMpls(),
                    self.parser.OFPActionSetField(mpls_label=16),
@@ -161,5 +156,14 @@ class MplsApp(df_base_app.DFlowApp):
         self.mod_flow(
             inst=inst,
             match=match,
-            table_id=const.L3_LOOKUP_TABLE
+            table_id=const.L3_LOOKUP_TABLE,
+            priority=const.PRIORITY_HIGH,
         )
+
+    def remove_egress_mpls_flow(self, network_id, nw_dst):
+        match = self.parser.OFPMatch(metadata=network_id, eth_type=ethernet.ether.ETH_TYPE_IP, ipv4_dst=nw_dst)
+        self.mod_flow(
+            table_id=const.L3_LOOKUP_TABLE,
+            command=self.datapath.ofproto.OFPFC_DELETE,
+            priority=const.PRIORITY_HIGH,
+            match=match)

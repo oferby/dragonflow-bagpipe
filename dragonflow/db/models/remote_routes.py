@@ -16,6 +16,7 @@ import dragonflow.db.model_framework as mf
 import dragonflow.db.field_types as df_fields
 from dragonflow.db.models import mixins
 
+
 @mf.register_model
 @mf.construct_nb_db_model
 class RemoteLabeledRoute(mf.ModelBase, mixins.BasicEvents):
@@ -24,6 +25,7 @@ class RemoteLabeledRoute(mf.ModelBase, mixins.BasicEvents):
     destination = df_fields.IpNetworkField(required=True)
     nexthop = df_fields.IpAddressField(required=True)
     label = fields.IntField(required=True)
+    helper_port = fields.StringField(required=True)
 
 
 @mf.register_model
