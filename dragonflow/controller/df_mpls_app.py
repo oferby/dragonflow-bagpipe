@@ -29,6 +29,8 @@ class MplsApp(df_base_app.DFlowApp):
         self.mac_address = cfg.CONF.df_mpls.mpls_mac
         self.interface_ip = cfg.CONF.df_mpls.ip_address
         self.mpls_port_id = 18
+        # Need to fix this - use ARP to the the next hop MAC
+        self.remote_router_mac = {'10.11.132.19': '2c:6b:f5:61:dd:94', '10.10.132.19': '2c:6b:f5:61:dd:94'}
 
     def switch_features_handler(self, ev):
         self.add_arp_flow()
@@ -100,14 +102,14 @@ class MplsApp(df_base_app.DFlowApp):
         LOG.debug('got remote route create event - %s %s %s %s', rlroute.destination, rlroute.helper_port,
                   rlroute.nexthop, rlroute.label)
         lport, lswitch = self._get_lport_and_lswitch(rlroute.helper_port)
-        self.add_egress_mpls_flow(lswitch.unique_key, rlroute.destination.__str__())
+        self.add_egress_mpls_flow(lswitch.unique_key, rlroute)
 
     @df_base_app.register_event(remote_routes.RemoteLabeledRoute, model_constants.EVENT_DELETED)
     def remote_route_setup_remove(self, rlroute):
         LOG.debug('got remote route remove event - %s %s %s %s', rlroute.destination, rlroute.helper_port,
                   rlroute.nexthop, rlroute.label)
         lport, lswitch = self._get_lport_and_lswitch(rlroute.helper_port)
-        self.remove_egress_mpls_flow(lswitch.unique_key, rlroute.destination.__str__())
+        self.remove_egress_mpls_flow(lswitch.unique_key, rlroute)
 
     def _setup_local_route(self, llroute):
         lport, lswitch = self._get_lport_and_lswitch(llroute.port)
@@ -145,12 +147,12 @@ class MplsApp(df_base_app.DFlowApp):
             lswitch = self.nb_api.get(lport.lswitch)
         return lport, lswitch
 
-    def add_egress_mpls_flow(self, network_id, nw_dst):
-        match = self.parser.OFPMatch(metadata=network_id, eth_type=ethernet.ether.ETH_TYPE_IP, ipv4_dst=nw_dst)
+    def add_egress_mpls_flow(self, network_id, rlroute):
+        match = self._get_remote_route_match(network_id, rlroute)
         actions = [self.parser.OFPActionPushMpls(),
-                   self.parser.OFPActionSetField(mpls_label=16),
+                   self.parser.OFPActionSetField(mpls_label=rlroute.label),
                    self.parser.OFPActionSetField(eth_src=self.mac_address),
-                   self.parser.OFPActionSetField(eth_dst='2c:6b:f5:61:dd:94'),
+                   self.parser.OFPActionSetField(eth_dst=self.remote_router_mac[rlroute.nexthop.__str__()]),
                    self.parser.OFPActionOutput(self.mpls_port_id, self.datapath.ofproto.OFPCML_NO_BUFFER)]
         inst = [self.parser.OFPInstructionActions(self.datapath.ofproto.OFPIT_APPLY_ACTIONS, actions)]
         self.mod_flow(
@@ -160,10 +162,14 @@ class MplsApp(df_base_app.DFlowApp):
             priority=const.PRIORITY_HIGH,
         )
 
-    def remove_egress_mpls_flow(self, network_id, nw_dst):
-        match = self.parser.OFPMatch(metadata=network_id, eth_type=ethernet.ether.ETH_TYPE_IP, ipv4_dst=nw_dst)
+    def remove_egress_mpls_flow(self, network_id, rlroute):
+        match = self._get_remote_route_match(network_id, rlroute)
         self.mod_flow(
             table_id=const.L3_LOOKUP_TABLE,
             command=self.datapath.ofproto.OFPFC_DELETE,
             priority=const.PRIORITY_HIGH,
             match=match)
+
+    def _get_remote_route_match(self, network_id, rlroute):
+        return self.parser.OFPMatch(metadata=network_id, eth_type=ethernet.ether.ETH_TYPE_IP,
+                                    ipv4_dst=rlroute.destination.__str__())
