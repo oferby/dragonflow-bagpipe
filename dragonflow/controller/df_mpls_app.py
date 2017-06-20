@@ -1,17 +1,11 @@
-from neutron_lib import constants as n_const
 from oslo_log import log
-from ryu.lib.packet import ipv4
-from ryu.lib.packet import ipv6
-from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.ofproto import ether
 from ryu.lib.packet import arp
 from ryu.ofproto import nicira_ext
 
-from dragonflow.db import db_store2
 from dragonflow import conf as cfg
 from dragonflow.controller.common import constants as const
-from dragonflow.controller.common import arp_responder
 from dragonflow.controller import df_base_app
 from dragonflow.db.models import l2
 from dragonflow.db.models import constants as model_constants
@@ -28,7 +22,7 @@ class MplsApp(df_base_app.DFlowApp):
         self.hard_timeout = 0
         self.mac_address = cfg.CONF.df_mpls.mpls_mac
         self.interface_ip = cfg.CONF.df_mpls.ip_address
-        self.mpls_port_id = 18
+        self.mpls_port_id = 1
         # Need to fix this - use ARP to the the next hop MAC
         self.remote_router_mac = {'10.11.132.19': '2c:6b:f5:61:dd:94', '10.10.132.19': '2c:6b:f5:61:dd:94'}
 
@@ -95,24 +89,29 @@ class MplsApp(df_base_app.DFlowApp):
     @df_base_app.register_event(remote_routes.LocalLabeledRoute, model_constants.EVENT_DELETED)
     def local_route_setup_remove(self, llroute):
         LOG.debug('got local route remove event for %s', llroute)
-        self._delete_local_rotue(llroute.label)
+        self._delete_local_route(llroute.label)
 
     @df_base_app.register_event(remote_routes.RemoteLabeledRoute, model_constants.EVENT_CREATED)
     def remote_route_setup_create(self, rlroute):
         LOG.debug('got remote route create event - %s %s %s %s', rlroute.destination, rlroute.helper_port,
                   rlroute.nexthop, rlroute.label)
-        lport, lswitch = self._get_lport_and_lswitch(rlroute.helper_port)
-        self.add_egress_mpls_flow(lswitch.unique_key, rlroute)
+        net_id = self._get_net_id(rlroute.helper_port)
+        self.add_egress_mpls_flow(net_id, rlroute)
 
     @df_base_app.register_event(remote_routes.RemoteLabeledRoute, model_constants.EVENT_DELETED)
     def remote_route_setup_remove(self, rlroute):
         LOG.debug('got remote route remove event - %s %s %s %s', rlroute.destination, rlroute.helper_port,
                   rlroute.nexthop, rlroute.label)
-        lport, lswitch = self._get_lport_and_lswitch(rlroute.helper_port)
-        self.remove_egress_mpls_flow(lswitch.unique_key, rlroute)
+        net_id = self._get_net_id(rlroute.helper_port)
+        self.remove_egress_mpls_flow(net_id, rlroute)
 
     def _setup_local_route(self, llroute):
-        lport, lswitch = self._get_lport_and_lswitch(llroute.port)
+        lport = self.nb_api.get(l2.LogicalPort(id=llroute.port))
+
+        lswitch = lport.lswitch.get_object()
+        if not lswitch:
+            lswitch = self.nb_api.get(lport.lswitch)
+
         network_id = lswitch.unique_key
         match = self.get_mpls_label_match(llroute.label)
         actions = [self.parser.OFPActionPopMpls(ethertype=ethernet.ether.ETH_TYPE_IP),
@@ -131,7 +130,7 @@ class MplsApp(df_base_app.DFlowApp):
             match=match,
         )
 
-    def _delete_local_rotue(self, label):
+    def _delete_local_route(self, label):
         match = self.get_mpls_label_match(label)
         self.mod_flow(
             table_id=const.INGRESS_MPLS_TABLE,
@@ -139,13 +138,12 @@ class MplsApp(df_base_app.DFlowApp):
             priority=const.PRIORITY_HIGH,
             match=match)
 
-    def _get_lport_and_lswitch(self, tap_device_name):
-        lport_id = self.vswitch_api.get_port_port_id(tap_device_name)
-        lport = self.nb_api.get(l2.LogicalPort(id=lport_id))
+    def _get_net_id(self, port_id):
+        lport = self.nb_api.get(l2.LogicalPort(id=port_id))
         lswitch = lport.lswitch.get_object()
         if not lswitch:
             lswitch = self.nb_api.get(lport.lswitch)
-        return lport, lswitch
+        return lswitch.unique_key
 
     def add_egress_mpls_flow(self, network_id, rlroute):
         match = self._get_remote_route_match(network_id, rlroute)
